@@ -15,12 +15,12 @@
 3. [Data Flow](#3-data-flow)
 4. [Source Database (PostgreSQL)](#4-source-database-postgresql)
 5. [Topic Message Format](#5-topic-message-format)
-6. [Configuration Reference](#6-configuration-reference)
-7. [Quick Reference Commands](#7-quick-reference-commands)
-8. [IAM Authentication (AWS MSK)](#8-iam-authentication-aws-msk)
-9. [Field-Level Encryption](#9-field-level-encryption)
-10. [Message Envelope (Confluent Cloud)](#10-message-envelope-confluent-cloud)
-11. [Docker – Azure VM Replicator](#11-docker--azure-vm-replicator)
+6. [Message Envelope (Confluent Cloud)](#6-message-envelope-confluent-cloud)
+7. [IAM Authentication (AWS MSK)](#7-iam-authentication-aws-msk)
+8. [Field-Level Encryption](#8-field-level-encryption)
+9. [Configuration Reference](#9-configuration-reference)
+10. [Docker – Azure VM Replicator](#10-docker--azure-vm-replicator)
+11. [Quick Reference Commands](#11-quick-reference-commands)
 
 ---
 
@@ -260,9 +260,208 @@ SELECT * FROM products WHERE _deleted = 0;
 
 ---
 
-## 6. Configuration Reference
+## 6. Message Envelope (Confluent Cloud)
 
-### 6.1 Kafka Connect (EC2) – Distributed Properties
+### 6.1 Debezium Envelope (Source)
+
+Before transforms, Debezium produces a wrapped envelope:
+
+```json
+{
+  "schema": { ... },
+  "payload": {
+    "before": null,
+    "after": { "id": 19, "name": "Wireless Headphones", ... },
+    "source": {
+      "version": "2.5.0",
+      "connector": "postgresql",
+      "name": "psgsrc",
+      "ts_ms": 1730138753808,
+      "db": "postgres",
+      "table": "products"
+    },
+    "op": "c",
+    "ts_ms": 1730138753808
+  }
+}
+```
+
+| Field | Purpose |
+|-------|---------|
+| `before` | Previous row state (null for INSERT) |
+| `after` | New row state |
+| `source` | Connector metadata (db, table, ts_ms) |
+| `op` | Operation: `c`=create, `u`=update, `d`=delete |
+| `ts_ms` | Event timestamp |
+
+### 6.2 Confluent Cloud Envelope (Confluent Wire Format)
+
+Confluent Cloud uses Schema Registry for serialization. Messages include:
+
+| Component | Description |
+|-----------|-------------|
+| **Magic byte** | Schema format identifier |
+| **Schema ID** | 4-byte schema ID from Schema Registry |
+| **Payload** | Serialized JSON (or Avro, Protobuf) |
+
+The schema ID is stored in the message envelope; consumers use it to fetch the schema from Schema Registry for deserialization.
+
+### 6.3 After ExtractNewRecordState
+
+The Replicator uses `ExtractNewRecordState` to flatten the Debezium envelope:
+
+| Input | Output |
+|-------|--------|
+| `payload.after` | Becomes the message value |
+| `payload.before` | Used for delete detection |
+| `source`, `op` | Removed or in headers |
+
+**Insert/Update value:**
+
+```json
+{
+  "id": 19,
+  "name": "Wireless Headphones",
+  "category": "Electronics",
+  "price": 79.99,
+  "stock_quantity": 50,
+  "last_updated": 1730138753808
+}
+```
+
+**Delete:** Tombstone (value = `null`) with same key; optional `__deleted` payload before tombstone.
+
+### 6.4 Headers (Provenance)
+
+With `provenance.header.enable=true`, the Replicator adds headers:
+
+| Header | Purpose |
+|--------|---------|
+| `confluent.replicator.source.topic` | Source topic name |
+| `confluent.replicator.source.partition` | Source partition |
+| `confluent.replicator.source.offset` | Source offset |
+
+---
+
+## 7. IAM Authentication (AWS MSK)
+
+AWS MSK supports IAM-based authentication instead of static SASL credentials. The pipeline uses IAM for both the Kafka Connect worker (EC2) and the Replicator (Azure VM).
+
+### 7.1 How IAM Auth Works
+
+| Aspect | Details |
+|--------|---------|
+| **Mechanism** | SASL mechanism `AWS_MSK_IAM` with `IAMLoginModule` |
+| **Credentials** | Short-lived SigV4 signatures derived from IAM credentials |
+| **No static secrets** | No username/password stored; IAM role or access keys used |
+| **Ports** | 9098 (private VPC), 9198 (public) – both SASL_SSL |
+
+### 7.2 Required IAM Permissions
+
+The IAM principal (user, role, or EC2 instance profile) must have:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "kafka-cluster:Connect",
+    "kafka-cluster:DescribeCluster",
+    "kafka-cluster:DescribeTopic",
+    "kafka-cluster:ReadData",
+    "kafka-cluster:WriteData",
+    "kafka-cluster:CreateTopic",
+    "kafka-cluster:DescribeGroup",
+    "kafka-cluster:AlterGroup"
+  ],
+  "Resource": [
+    "arn:aws:kafka:<region>:<account>:cluster/<cluster-name>/*",
+    "arn:aws:kafka:<region>:<account>:topic/<cluster-name>/*",
+    "arn:aws:kafka:<region>:<account>:group/<cluster-name>/*"
+  ]
+}
+```
+
+### 7.3 Kafka Connect Configuration
+
+```properties
+security.protocol=SASL_SSL
+sasl.mechanism=AWS_MSK_IAM
+sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required;
+sasl.client.callback.handler.class=software.amazon.msk.auth.iam.IAMClientCallbackHandler
+```
+
+The `aws-msk-iam-auth` JAR provides `IAMLoginModule` and `IAMClientCallbackHandler`. Credentials are resolved in this order:
+
+1. **Environment:** `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`
+2. **Shared credentials:** `~/.aws/credentials`
+3. **Instance profile:** EC2/ECS task role (no config needed)
+4. **Container credentials:** ECS task role
+
+### 7.4 Azure VM – Credential Setup
+
+The Replicator runs on an Azure VM and consumes from MSK. It cannot use an EC2 instance profile. Options:
+
+| Method | Use Case |
+|--------|----------|
+| **`~/.aws/credentials`** | Mounted into Docker; IAM user access keys |
+| **Environment variables** | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` |
+| **IAM role for Azure** | If using Azure Arc or federated identity to AWS |
+
+**Security:** Use IAM user with minimal permissions; rotate keys regularly. Prefer IAM roles over long-lived access keys when possible.
+
+---
+
+## 8. Field-Level Encryption
+
+The pipeline supports optional field-level encryption for CDC payloads between Debezium and the Replicator.
+
+### 8.1 Flow
+
+```
+Debezium (Encrypt SMT) → MSK (encrypted payload) → Replicator (Decrypt SMT) → Confluent Cloud (plain)
+```
+
+| Stage | Format | Location |
+|-------|--------|----------|
+| **Before encrypt** | Debezium envelope with `payload` | In-memory, Debezium |
+| **After encrypt** | `payload` = base64 ciphertext | MSK topic |
+| **After decrypt** | Debezium envelope, then flattened | Replicator → Confluent Cloud |
+
+### 8.2 Encryption SMT (Debezium)
+
+- **Class:** `com.btds.Encryption`
+- **Input:** Full Connect record (key, value, headers)
+- **Output:** Value `payload` field replaced with base64-encoded ciphertext
+- **Key:** Base64-encoded symmetric key; must match Decrypt SMT
+
+### 8.3 Decryption SMT (Replicator)
+
+- **Class:** `com.btds.Decryption`
+- **Input:** Connect record with encrypted `payload`
+- **Output:** `payload` decrypted back to Debezium envelope
+- **Key:** Same base64 key as Encryption SMT
+
+### 8.4 Key Management
+
+| Requirement | Notes |
+|-------------|-------|
+| **Key symmetry** | Same key on Debezium and Replicator |
+| **Storage** | Use AWS Secrets Manager, Parameter Store, or FileConfigProvider |
+| **Rotation** | Plan for key rotation; may require dual-key support |
+| **Never commit** | Keys must not be in version control |
+
+### 8.5 Encrypted vs Plain Topics
+
+| Topic | Encrypted? | Consumer |
+|-------|------------|----------|
+| `psgsrc_encrypt_v1.public.products` | Yes | Replicator (decrypts) |
+| `psgsrc.public.products` | No | Plain Debezium format |
+
+---
+
+## 9. Configuration Reference
+
+### 9.1 Kafka Connect (EC2) – Distributed Properties
 
 Full template: `config/connect-distributed.properties.example`. Copy to `connect-distributed.properties` and replace placeholders.
 
@@ -283,9 +482,10 @@ status.storage.topic=connect-status-v2
 # ... (see config/connect-distributed.properties.example)
 ```
 
+
 ---
 
-### 6.2 Debezium Connector (with SMT Encryption)
+### 9.2 Debezium Connector (with SMT Encryption)
 
 ```json
 {
@@ -333,7 +533,7 @@ status.storage.topic=connect-status-v2
 
 ---
 
-### 6.3 Replicator Connector (with SMT Decryption)
+### 9.3 Replicator Connector (with SMT Decryption)
 
 ```json
 {
@@ -410,7 +610,7 @@ status.storage.topic=connect-status-v2
 
 ---
 
-### 6.4 SQL Server Sink Connector (Confluent Cloud FMC)
+### 9.4 SQL Server Sink Connector (Confluent Cloud FMC)
 
 Consumes CDC from Confluent Cloud topics and writes to Microsoft SQL Server / Azure SQL.
 
@@ -497,282 +697,11 @@ With `table.name.format` set to `${topic}`, the sink uses these simplified names
 
 ---
 
-## 7. Quick Reference Commands
-
-### 7.1 Connect to RDS (from EC2)
-
-```bash
-export RDSHOST="<RDS_ENDPOINT>"
-psql "host=$RDSHOST port=5432 dbname=postgres user=<DB_USER> sslmode=verify-full sslrootcert=/certs/global-bundle.pem" -W
-```
-
-### 7.2 Sample Insert (Products Table)
-
-```sql
-INSERT INTO products (id, name, category, price, stock_quantity, last_updated)
-VALUES (34, 'Wireless Headphones', 'Electronics', 79.99, 50, NOW());
-```
-
-### 7.3 Consume from MSK (Encrypted Topic)
-
-```bash
-./bin/kafka-console-consumer.sh \
-  --bootstrap-server <MSK_PUBLIC_BOOTSTRAP_SERVERS> \
-  --consumer.config ~/msk-client.properties \
-  --topic psgsrc_encrypt_v1.public.products \
-  --from-beginning \
-  --max-messages 5
-```
-
-**Note:** Encrypted payloads appear as base64-encoded strings. Decryption happens in the Replicator SMT before producing to Confluent Cloud.
-
-### 7.4 SSH to EC2 (Kafka Connect Worker)
-
-```bash
-ssh -i "<PEM_KEY_PATH>" ec2-user@<EC2_PUBLIC_IP_OR_HOSTNAME>
-```
-
-### 7.5 SSH to Azure VM (Replicator)
-
-```bash
-ssh -i "<PEM_KEY_PATH>" azureuser@<AZURE_VM_IP>
-```
-
-### 7.6 Docker – Replicator (Azure VM)
-
-```bash
-# Start
-docker-compose -f docker/docker-compose.yml up -d
-
-# Stop
-docker-compose -f docker/docker-compose.yml down
-
-# Restart
-docker-compose -f docker/docker-compose.yml restart replicator
-
-# Logs
-docker-compose -f docker/docker-compose.yml logs -f replicator
-```
-
-### 7.7 Connector REST API (Replicator)
-
-Base URL: `http://localhost:8083`. Connector name: `msk-to-confluent-cloud-replicator-encrypted`.
-
-| Action | Command |
-|--------|---------|
-| Create | `curl -s -X POST -H "Content-Type: application/json" -d @config/replicator-connector.json http://localhost:8083/connectors` |
-| List | `curl -s http://localhost:8083/connectors` |
-| Status | `curl -s http://localhost:8083/connectors/msk-to-confluent-cloud-replicator-encrypted/status` |
-| Pause | `curl -s -X PUT http://localhost:8083/connectors/msk-to-confluent-cloud-replicator-encrypted/pause` |
-| Resume | `curl -s -X PUT http://localhost:8083/connectors/msk-to-confluent-cloud-replicator-encrypted/resume` |
-| Delete | `curl -s -X DELETE http://localhost:8083/connectors/msk-to-confluent-cloud-replicator-encrypted` |
-
----
-
-## 8. IAM Authentication (AWS MSK)
-
-AWS MSK supports IAM-based authentication instead of static SASL credentials. The pipeline uses IAM for both the Kafka Connect worker (EC2) and the Replicator (Azure VM).
-
-### 8.1 How IAM Auth Works
-
-| Aspect | Details |
-|--------|---------|
-| **Mechanism** | SASL mechanism `AWS_MSK_IAM` with `IAMLoginModule` |
-| **Credentials** | Short-lived SigV4 signatures derived from IAM credentials |
-| **No static secrets** | No username/password stored; IAM role or access keys used |
-| **Ports** | 9098 (private VPC), 9198 (public) – both SASL_SSL |
-
-### 8.2 Required IAM Permissions
-
-The IAM principal (user, role, or EC2 instance profile) must have:
-
-```json
-{
-  "Effect": "Allow",
-  "Action": [
-    "kafka-cluster:Connect",
-    "kafka-cluster:DescribeCluster",
-    "kafka-cluster:DescribeTopic",
-    "kafka-cluster:ReadData",
-    "kafka-cluster:WriteData",
-    "kafka-cluster:CreateTopic",
-    "kafka-cluster:DescribeGroup",
-    "kafka-cluster:AlterGroup"
-  ],
-  "Resource": [
-    "arn:aws:kafka:<region>:<account>:cluster/<cluster-name>/*",
-    "arn:aws:kafka:<region>:<account>:topic/<cluster-name>/*",
-    "arn:aws:kafka:<region>:<account>:group/<cluster-name>/*"
-  ]
-}
-```
-
-### 8.3 Kafka Connect Configuration
-
-```properties
-security.protocol=SASL_SSL
-sasl.mechanism=AWS_MSK_IAM
-sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required;
-sasl.client.callback.handler.class=software.amazon.msk.auth.iam.IAMClientCallbackHandler
-```
-
-The `aws-msk-iam-auth` JAR provides `IAMLoginModule` and `IAMClientCallbackHandler`. Credentials are resolved in this order:
-
-1. **Environment:** `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`
-2. **Shared credentials:** `~/.aws/credentials`
-3. **Instance profile:** EC2/ECS task role (no config needed)
-4. **Container credentials:** ECS task role
-
-### 8.4 Azure VM – Credential Setup
-
-The Replicator runs on an Azure VM and consumes from MSK. It cannot use an EC2 instance profile. Options:
-
-| Method | Use Case |
-|--------|----------|
-| **`~/.aws/credentials`** | Mounted into Docker; IAM user access keys |
-| **Environment variables** | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` |
-| **IAM role for Azure** | If using Azure Arc or federated identity to AWS |
-
-**Security:** Use IAM user with minimal permissions; rotate keys regularly. Prefer IAM roles over long-lived access keys when possible.
-
----
-
-## 9. Field-Level Encryption
-
-The pipeline supports optional field-level encryption for CDC payloads between Debezium and the Replicator.
-
-### 9.1 Flow
-
-```
-Debezium (Encrypt SMT) → MSK (encrypted payload) → Replicator (Decrypt SMT) → Confluent Cloud (plain)
-```
-
-| Stage | Format | Location |
-|-------|--------|----------|
-| **Before encrypt** | Debezium envelope with `payload` | In-memory, Debezium |
-| **After encrypt** | `payload` = base64 ciphertext | MSK topic |
-| **After decrypt** | Debezium envelope, then flattened | Replicator → Confluent Cloud |
-
-### 9.2 Encryption SMT (Debezium)
-
-- **Class:** `com.btds.Encryption`
-- **Input:** Full Connect record (key, value, headers)
-- **Output:** Value `payload` field replaced with base64-encoded ciphertext
-- **Key:** Base64-encoded symmetric key; must match Decrypt SMT
-
-### 9.3 Decryption SMT (Replicator)
-
-- **Class:** `com.btds.Decryption`
-- **Input:** Connect record with encrypted `payload`
-- **Output:** `payload` decrypted back to Debezium envelope
-- **Key:** Same base64 key as Encryption SMT
-
-### 9.4 Key Management
-
-| Requirement | Notes |
-|-------------|-------|
-| **Key symmetry** | Same key on Debezium and Replicator |
-| **Storage** | Use AWS Secrets Manager, Parameter Store, or FileConfigProvider |
-| **Rotation** | Plan for key rotation; may require dual-key support |
-| **Never commit** | Keys must not be in version control |
-
-### 9.5 Encrypted vs Plain Topics
-
-| Topic | Encrypted? | Consumer |
-|-------|------------|----------|
-| `psgsrc_encrypt_v1.public.products` | Yes | Replicator (decrypts) |
-| `psgsrc.public.products` | No | Plain Debezium format |
-
----
-
-## 10. Message Envelope (Confluent Cloud)
-
-### 10.1 Debezium Envelope (Source)
-
-Before transforms, Debezium produces a wrapped envelope:
-
-```json
-{
-  "schema": { ... },
-  "payload": {
-    "before": null,
-    "after": { "id": 19, "name": "Wireless Headphones", ... },
-    "source": {
-      "version": "2.5.0",
-      "connector": "postgresql",
-      "name": "psgsrc",
-      "ts_ms": 1730138753808,
-      "db": "postgres",
-      "table": "products"
-    },
-    "op": "c",
-    "ts_ms": 1730138753808
-  }
-}
-```
-
-| Field | Purpose |
-|-------|---------|
-| `before` | Previous row state (null for INSERT) |
-| `after` | New row state |
-| `source` | Connector metadata (db, table, ts_ms) |
-| `op` | Operation: `c`=create, `u`=update, `d`=delete |
-| `ts_ms` | Event timestamp |
-
-### 10.2 Confluent Cloud Envelope (Confluent Wire Format)
-
-Confluent Cloud uses Schema Registry for serialization. Messages include:
-
-| Component | Description |
-|-----------|-------------|
-| **Magic byte** | Schema format identifier |
-| **Schema ID** | 4-byte schema ID from Schema Registry |
-| **Payload** | Serialized JSON (or Avro, Protobuf) |
-
-The schema ID is stored in the message envelope; consumers use it to fetch the schema from Schema Registry for deserialization.
-
-### 10.3 After ExtractNewRecordState
-
-The Replicator uses `ExtractNewRecordState` to flatten the Debezium envelope:
-
-| Input | Output |
-|-------|--------|
-| `payload.after` | Becomes the message value |
-| `payload.before` | Used for delete detection |
-| `source`, `op` | Removed or in headers |
-
-**Insert/Update value:**
-
-```json
-{
-  "id": 19,
-  "name": "Wireless Headphones",
-  "category": "Electronics",
-  "price": 79.99,
-  "stock_quantity": 50,
-  "last_updated": 1730138753808
-}
-```
-
-**Delete:** Tombstone (value = `null`) with same key; optional `__deleted` payload before tombstone.
-
-### 10.4 Headers (Provenance)
-
-With `provenance.header.enable=true`, the Replicator adds headers:
-
-| Header | Purpose |
-|--------|---------|
-| `confluent.replicator.source.topic` | Source topic name |
-| `confluent.replicator.source.partition` | Source partition |
-| `confluent.replicator.source.offset` | Source offset |
-
----
-
-## 11. Docker – Azure VM Replicator
+## 10. Docker – Azure VM Replicator
 
 The Replicator runs in Docker on an Azure VM. Sensitive values are omitted; use environment variables or secrets.
 
-### 11.1 Files
+### 10.1 Files
 
 | File | Purpose |
 |------|---------|
@@ -780,7 +709,7 @@ The Replicator runs in Docker on an Azure VM. Sensitive values are omitted; use 
 | `docker/docker-compose.yml` | Replicator service definition |
 | `docker/.env.example` | Placeholder env vars (copy to `.env`) |
 
-### 11.2 Dockerfile
+### 10.2 Dockerfile
 
 ```dockerfile
 FROM confluentinc/cp-kafka-connect:7.6.0
@@ -790,7 +719,7 @@ RUN mkdir -p /plugins/aws-msk-iam-auth /plugins/btds-encryption
 
 Plugins are mounted at runtime via `docker-compose`.
 
-### 11.3 Docker Compose
+### 10.3 Docker Compose
 
 ```yaml
 services:
@@ -809,7 +738,7 @@ services:
       - ~/.aws:/home/appuser/.aws:ro
 ```
 
-### 11.4 Run
+### 10.4 Run
 
 ```bash
 # 1. Add plugin JARs to plugins/aws-msk-iam-auth/ and plugins/btds-encryption/
@@ -820,9 +749,81 @@ cd /path/to/bluesquared
 docker-compose -f docker/docker-compose.yml up -d
 ```
 
-### 11.5 Register Replicator Connector
+### 10.5 Register Replicator Connector
 
-After the container is up, create the Replicator connector via REST (see [§6.3](#63-replicator-connector-with-smt-decryption)). Use config provider or env vars for secrets.
+After the container is up, create the Replicator connector via REST (see [§9.3](#93-replicator-connector-with-smt-decryption)). Use config provider or env vars for secrets.
+
+---
+
+## 11. Quick Reference Commands
+
+### 11.1 Connect to RDS (from EC2)
+
+```bash
+export RDSHOST="<RDS_ENDPOINT>"
+psql "host=$RDSHOST port=5432 dbname=postgres user=<DB_USER> sslmode=verify-full sslrootcert=/certs/global-bundle.pem" -W
+```
+
+### 11.2 Sample Insert (Products Table)
+
+```sql
+INSERT INTO products (id, name, category, price, stock_quantity, last_updated)
+VALUES (34, 'Wireless Headphones', 'Electronics', 79.99, 50, NOW());
+```
+
+### 11.3 Consume from MSK (Encrypted Topic)
+
+```bash
+./bin/kafka-console-consumer.sh \
+  --bootstrap-server <MSK_PUBLIC_BOOTSTRAP_SERVERS> \
+  --consumer.config ~/msk-client.properties \
+  --topic psgsrc_encrypt_v1.public.products \
+  --from-beginning \
+  --max-messages 5
+```
+
+**Note:** Encrypted payloads appear as base64-encoded strings. Decryption happens in the Replicator SMT before producing to Confluent Cloud.
+
+### 11.4 SSH to EC2 (Kafka Connect Worker)
+
+```bash
+ssh -i "<PEM_KEY_PATH>" ec2-user@<EC2_PUBLIC_IP_OR_HOSTNAME>
+```
+
+### 11.5 SSH to Azure VM (Replicator)
+
+```bash
+ssh -i "<PEM_KEY_PATH>" azureuser@<AZURE_VM_IP>
+```
+
+### 11.6 Docker – Replicator (Azure VM)
+
+```bash
+# Start
+docker-compose -f docker/docker-compose.yml up -d
+
+# Stop
+docker-compose -f docker/docker-compose.yml down
+
+# Restart
+docker-compose -f docker/docker-compose.yml restart replicator
+
+# Logs
+docker-compose -f docker/docker-compose.yml logs -f replicator
+```
+
+### 11.7 Connector REST API (Replicator)
+
+Base URL: `http://localhost:8083`. Connector name: `msk-to-confluent-cloud-replicator-encrypted`.
+
+| Action | Command |
+|--------|---------|
+| Create | `curl -s -X POST -H "Content-Type: application/json" -d @config/replicator-connector.json http://localhost:8083/connectors` |
+| List | `curl -s http://localhost:8083/connectors` |
+| Status | `curl -s http://localhost:8083/connectors/msk-to-confluent-cloud-replicator-encrypted/status` |
+| Pause | `curl -s -X PUT http://localhost:8083/connectors/msk-to-confluent-cloud-replicator-encrypted/pause` |
+| Resume | `curl -s -X PUT http://localhost:8083/connectors/msk-to-confluent-cloud-replicator-encrypted/resume` |
+| Delete | `curl -s -X DELETE http://localhost:8083/connectors/msk-to-confluent-cloud-replicator-encrypted` |
 
 ---
 
