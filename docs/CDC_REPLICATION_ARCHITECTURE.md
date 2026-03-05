@@ -45,7 +45,7 @@
                          VPC (AWS Region)
 ```
 
-### 1.2 Downstream (Optional)
+### 1.2 Downstream
 
 | Component | Role |
 |-----------|------|
