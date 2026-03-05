@@ -10,16 +10,14 @@ FROM confluentinc/cp-enterprise-replicator:7.7.1
 USER root
 
 # ---------------------------------------------------------------------------
-# 1. Install the AWS MSK IAM Auth JAR
+# 1. Install the AWS MSK IAM Auth JAR (from plugins/)
 # ---------------------------------------------------------------------------
-ARG MSK_IAM_AUTH_VERSION=2.2.0
-ENV MSK_IAM_AUTH_JAR=aws-msk-iam-auth-${MSK_IAM_AUTH_VERSION}-all.jar
-
+COPY plugins/aws-msk-iam-auth/aws-msk-iam-auth-2.2.0-all.jar /tmp/msk-iam-auth.jar
 RUN mkdir -p /usr/share/java/msk-iam-auth && \
-    curl -fSL "https://github.com/aws/aws-msk-iam-auth/releases/download/v${MSK_IAM_AUTH_VERSION}/${MSK_IAM_AUTH_JAR}" \
-         -o /usr/share/java/msk-iam-auth/${MSK_IAM_AUTH_JAR} && \
-    cp /usr/share/java/msk-iam-auth/${MSK_IAM_AUTH_JAR} /usr/share/java/kafka/ && \
-    cp /usr/share/java/msk-iam-auth/${MSK_IAM_AUTH_JAR} /usr/share/java/kafka-connect-replicator/
+    cp /tmp/msk-iam-auth.jar /usr/share/java/msk-iam-auth/ && \
+    cp /tmp/msk-iam-auth.jar /usr/share/java/kafka/ && \
+    cp /tmp/msk-iam-auth.jar /usr/share/java/kafka-connect-replicator/ && \
+    rm /tmp/msk-iam-auth.jar
 
 # ---------------------------------------------------------------------------
 # 2. Install BTDS Decryption SMT (com.btds.Decryption)

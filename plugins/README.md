@@ -16,11 +16,8 @@ This folder contains JARs required for the CDC replication pipeline:
 
 ### AWS MSK IAM Auth
 
-- **Maven:** `software.amazon.msk:aws-msk-iam-auth`
-- **GitHub:** [aws/aws-msk-iam-auth](https://github.com/aws/aws-msk-iam-auth/releases)
-- **Maven Central:** [aws-msk-iam-auth](https://central.sonatype.com/artifact/software.amazon.msk/aws-msk-iam-auth)
-
-Download the JAR and place it in `plugins/aws-msk-iam-auth/` (with its dependencies, or use the shaded/fat JAR if available).
+- **Included:** `plugins/aws-msk-iam-auth/aws-msk-iam-auth-2.2.0-all.jar`
+- **Source:** [aws/aws-msk-iam-auth](https://github.com/aws/aws-msk-iam-auth/releases)
 
 ### BTDS Encryption SMT
 
