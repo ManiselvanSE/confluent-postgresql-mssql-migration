@@ -12,7 +12,7 @@ USER root
 # ---------------------------------------------------------------------------
 # 1. Install the AWS MSK IAM Auth JAR (from plugins/)
 # ---------------------------------------------------------------------------
-COPY plugins/aws-msk-iam-auth/aws-msk-iam-auth-2.2.0-all.jar /tmp/msk-iam-auth.jar
+COPY plugins/aws-msk-iam-auth/aws-msk-iam-auth-2.3.5-all.jar /tmp/msk-iam-auth.jar
 RUN mkdir -p /usr/share/java/msk-iam-auth && \
     cp /tmp/msk-iam-auth.jar /usr/share/java/msk-iam-auth/ && \
     cp /tmp/msk-iam-auth.jar /usr/share/java/kafka/ && \

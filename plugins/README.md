@@ -16,7 +16,7 @@ This folder contains JARs required for the CDC replication pipeline:
 
 ### AWS MSK IAM Auth
 
-- **Included:** `plugins/aws-msk-iam-auth/aws-msk-iam-auth-2.2.0-all.jar`
+- **Included:** `plugins/aws-msk-iam-auth/aws-msk-iam-auth-2.3.5-all.jar`
 - **Source:** [aws/aws-msk-iam-auth](https://github.com/aws/aws-msk-iam-auth/releases)
 
 ### BTDS Encryption SMT
