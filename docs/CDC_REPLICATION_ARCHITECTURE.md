@@ -264,41 +264,23 @@ SELECT * FROM products WHERE _deleted = 0;
 
 ### 6.1 Kafka Connect (EC2) – Distributed Properties
 
+Full template: `config/connect-distributed.properties.example`. Copy to `connect-distributed.properties` and replace placeholders.
+
+| Placeholder | Purpose |
+|-------------|---------|
+| `<MSK_BOOTSTRAP_SERVERS>` | MSK broker list (e.g. `b-1.xxx.kafka.region.amazonaws.com:9098,b-2.xxx:9098,b-3.xxx:9098`) |
+| `<PLUGIN_PATH>` | Path to plugins (e.g. `/home/ec2-user/kafka-connect/plugins`) |
+
 ```properties
 # Kafka Connect distributed mode
-bootstrap.servers=<MSK_BROKER_1>:9098,<MSK_BROKER_2>:9098,<MSK_BROKER_3>:9098
+bootstrap.servers=<MSK_BOOTSTRAP_SERVERS>
 
 # Group and cluster
 group.id=connect-cluster
 config.storage.topic=connect-config-v2
 offset.storage.topic=connect-offsets-v2
 status.storage.topic=connect-status-v2
-config.storage.replication.factor=2
-offset.storage.replication.factor=2
-status.storage.replication.factor=2
-
-# REST API
-rest.port=8083
-rest.advertised.host.name=0.0.0.0
-
-# IAM auth to MSK
-security.protocol=SASL_SSL
-sasl.mechanism=AWS_MSK_IAM
-sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required;
-sasl.client.callback.handler.class=software.amazon.msk.auth.iam.IAMClientCallbackHandler
-
-# Converters (JSON for Debezium)
-key.converter=org.apache.kafka.connect.json.JsonConverter
-key.converter.schemas.enable=true
-value.converter=org.apache.kafka.connect.json.JsonConverter
-value.converter.schemas.enable=true
-
-# Config provider for externalized secrets
-connect.config.providers=file
-connect.config.providers.file.class=org.apache.kafka.common.config.provider.FileConfigProvider
-
-# Plugin path (Debezium + aws-msk-iam-auth)
-plugin.path=/home/ec2-user/kafka-connect/plugins
+# ... (see config/connect-distributed.properties.example)
 ```
 
 ---

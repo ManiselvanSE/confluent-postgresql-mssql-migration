@@ -11,6 +11,7 @@ debezium-postgres-config-local.json
 debezium-postgres-config.json
 client.properties.local
 config/replicator-connector.json
+config/connect-distributed.properties
 
 # IDE
 .idea/
