@@ -1,6 +1,8 @@
-# POC Setup: MSK (AWS) → Replicator (Azure VM) → Confluent Cloud
+# Confluent – Migration using Connector: PostgreSQL to MSSQL
 
-POC setup demonstrating how data is replicated from AWS MSK to Confluent Cloud via the Replicator running on an Azure VM, with end-to-end CDC from PostgreSQL RDS to Azure SQL.
+Migration setup using **Confluent managed connectors** to replicate data from **PostgreSQL** to **MSSQL** database.
+
+This project demonstrates end-to-end CDC (Change Data Capture) from PostgreSQL to MSSQL via Confluent Cloud, including flows through AWS MSK and the Replicator when applicable.
 
 ## Documentation
 
