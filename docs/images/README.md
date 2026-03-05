@@ -15,7 +15,6 @@ Place your screenshots in this folder and reference them in `CDC_REPLICATION_ARC
 | SQL Server products table | `sql-server-products-table.png` |
 | PostgreSQL source products table | `postgres-products-table.png` |
 | SQL Server Sink advanced config | `sql-server-sink-advanced-config.png` |
-| TopicRegexRouter transform | `topic-regex-router-transform.png` |
 
 ## Markdown syntax
 

@@ -477,8 +477,6 @@ Use `TopicRegexRouter` to map Debezium topic names (e.g. `psgsrc_encrypt_v1.publ
 
 **Behavior:** The regex captures three dot-separated segments. `$3` keeps only the third (table name).
 
-![TopicRegexRouter transform configuration](images/topic-regex-router-transform.png)
-
 | Source Topic | Result |
 |--------------|--------|
 | `psgsrc_encrypt_v1.public.products` | `products` |
