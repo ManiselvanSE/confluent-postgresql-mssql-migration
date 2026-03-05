@@ -1,13 +1,14 @@
 # Kafka Connect distributed mode (EC2 - Debezium source)
 # Copy to connect-distributed.properties and replace placeholders
+# Source: EC2 kafka-connect-worker
 
 bootstrap.servers=<MSK_BOOTSTRAP_SERVERS>
 
 # Group and cluster
-group.id=connect-cluster
-config.storage.topic=connect-config-v2
-offset.storage.topic=connect-offsets-v2
-status.storage.topic=connect-status-v2
+group.id=<CONNECT_GROUP_ID>
+config.storage.topic=<CONNECT_CONFIG_TOPIC>
+offset.storage.topic=<CONNECT_OFFSET_TOPIC>
+status.storage.topic=<CONNECT_STATUS_TOPIC>
 config.storage.replication.factor=2
 offset.storage.replication.factor=2
 status.storage.replication.factor=2
@@ -28,7 +29,7 @@ key.converter.schemas.enable=true
 value.converter=org.apache.kafka.connect.json.JsonConverter
 value.converter.schemas.enable=true
 
-# Config provider for externalized secrets
+# Config provider for externalized secrets (e.g. Kryptonite keyset, encryption keys)
 connect.config.providers=file
 connect.config.providers.file.class=org.apache.kafka.common.config.provider.FileConfigProvider
 

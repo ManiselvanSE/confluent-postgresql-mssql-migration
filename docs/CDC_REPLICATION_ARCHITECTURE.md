@@ -468,6 +468,10 @@ Full template: `config/connect-distributed.properties.example`. Copy to `connect
 | Placeholder | Purpose |
 |-------------|---------|
 | `<MSK_BOOTSTRAP_SERVERS>` | MSK broker list (e.g. `b-1.xxx.kafka.region.amazonaws.com:9098,b-2.xxx:9098,b-3.xxx:9098`) |
+| `<CONNECT_GROUP_ID>` | Connect cluster group (e.g. `connect-cluster`) |
+| `<CONNECT_CONFIG_TOPIC>` | Config storage topic (e.g. `connect-config-v2`) |
+| `<CONNECT_OFFSET_TOPIC>` | Offset storage topic (e.g. `connect-offsets-v2`) |
+| `<CONNECT_STATUS_TOPIC>` | Status storage topic (e.g. `connect-status-v2`) |
 | `<PLUGIN_PATH>` | Path to plugins (e.g. `/home/ec2-user/kafka-connect/plugins`) |
 
 ```properties
