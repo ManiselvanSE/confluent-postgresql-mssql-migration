@@ -40,3 +40,13 @@ docker-compose -f docker/docker-compose.yml up -d
 ## Volumes
 
 - `~/.aws` → `/home/appuser/.aws` (read-only, for MSK IAM)
+
+## Upload plugins to Azure VM
+
+```bash
+# From project root
+./scripts/upload-plugins-to-azure.sh
+
+# Or manually (set SSH_KEY and VM_HOST as needed):
+scp -i <SSH_KEY> -r plugins azureuser@<VM_IP>:~/
+```
