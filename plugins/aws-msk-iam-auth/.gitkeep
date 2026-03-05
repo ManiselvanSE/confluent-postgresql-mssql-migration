@@ -1,0 +1,3 @@
+# Place aws-msk-iam-auth-*.jar here
+# Download from: https://github.com/aws/aws-msk-iam-auth/releases
+# Or Maven: software.amazon.msk:aws-msk-iam-auth

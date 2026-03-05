@@ -1,0 +1,26 @@
+# Sensitive configuration (passwords, secrets)
+*password*
+*secret*
+.env
+.env.local
+.manienv
+*.pem
+
+# Local overrides with credentials
+debezium-postgres-config-local.json
+debezium-postgres-config.json
+client.properties.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs (if committed from EC2)
+*.log
