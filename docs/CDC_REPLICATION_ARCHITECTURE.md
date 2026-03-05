@@ -215,6 +215,8 @@ A delete operation produces **two consecutive messages** in the topic:
 
 ![Tombstone message detail – Confluent Cloud Messages view](images/tombstone-message-detail.png)
 
+![Tombstone reference – message list showing value = null at offset 7](images/tombstone-reference.png)
+
 The tombstone (value = `null`) has the same key as the deleted record. It enables Kafka log compaction to purge older versions. The SQL Server Sink uses `delete.on.null` to perform a DELETE when it sees a tombstone.
 
 | Event Type | Key | Value |

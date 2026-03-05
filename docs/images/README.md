@@ -12,6 +12,7 @@ Place your screenshots in this folder and reference them in `CDC_REPLICATION_ARC
 |------------|--------------------|
 | Encrypted topic (kafka-console-consumer output) | `encrypted-topic-msk.png` |
 | Tombstone message detail (Confluent Cloud) | `tombstone-message-detail.png` |
+| Tombstone reference (message list, value = null) | `tombstone-reference.png` |
 | SQL Server products table | `sql-server-products-table.png` |
 | PostgreSQL source products table | `postgres-products-table.png` |
 | SQL Server Sink advanced config | `sql-server-sink-advanced-config.png` |
