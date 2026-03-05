@@ -486,6 +486,8 @@ status.storage.topic=connect-status-v2
 # ... (see config/connect-distributed.properties.example)
 ```
 
+**MSK client (console consumer/producer):** `config/msk-client.properties.example` – IAM auth for `kafka-console-consumer.sh --consumer.config`.
+
 
 ---
 
