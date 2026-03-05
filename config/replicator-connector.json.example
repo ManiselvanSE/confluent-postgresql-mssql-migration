@@ -11,7 +11,7 @@
     "src.kafka.sasl.jaas.config": "software.amazon.msk.auth.iam.IAMLoginModule required;",
     "src.kafka.sasl.client.callback.handler.class": "software.amazon.msk.auth.iam.IAMClientCallbackHandler",
     "src.kafka.ssl.endpoint.identification.algorithm": "https",
-    "src.consumer.group.id": "replicator-source-consumer-v1",
+    "src.consumer.group.id": "replicator-source-consumer-v3",
     "src.consumer.auto.offset.reset": "earliest",
 
     "src.key.converter": "org.apache.kafka.connect.json.JsonConverter",
