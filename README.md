@@ -6,14 +6,15 @@ This project demonstrates end-to-end CDC (Change Data Capture) from PostgreSQL t
 
 ## Docker (Azure VM Replicator)
 
-Run the Replicator in Docker:
-
 ```bash
-# Add plugin JARs to plugins/, create .env from docker/.env.example
+# Start
 docker-compose -f docker/docker-compose.yml up -d
+
+# Connector: create, status, pause, resume
+curl -s http://localhost:8083/connectors/msk-to-confluent-cloud-replicator-encrypted/status
 ```
 
-See [docker/README.md](docker/README.md) for setup. Sensitive values use placeholders; never commit secrets.
+See [docker/README.md](docker/README.md) for full Docker and connector commands.
 
 ## Documentation
 

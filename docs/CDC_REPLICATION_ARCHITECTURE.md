@@ -558,6 +558,35 @@ ssh -i "<PEM_KEY_PATH>" ec2-user@<EC2_PUBLIC_IP_OR_HOSTNAME>
 ssh -i "<PEM_KEY_PATH>" azureuser@<AZURE_VM_IP>
 ```
 
+### 7.6 Docker – Replicator (Azure VM)
+
+```bash
+# Start
+docker-compose -f docker/docker-compose.yml up -d
+
+# Stop
+docker-compose -f docker/docker-compose.yml down
+
+# Restart
+docker-compose -f docker/docker-compose.yml restart replicator
+
+# Logs
+docker-compose -f docker/docker-compose.yml logs -f replicator
+```
+
+### 7.7 Connector REST API (Replicator)
+
+Base URL: `http://localhost:8083`. Connector name: `msk-to-confluent-cloud-replicator-encrypted`.
+
+| Action | Command |
+|--------|---------|
+| Create | `curl -s -X POST -H "Content-Type: application/json" -d @config/replicator-connector.json http://localhost:8083/connectors` |
+| List | `curl -s http://localhost:8083/connectors` |
+| Status | `curl -s http://localhost:8083/connectors/msk-to-confluent-cloud-replicator-encrypted/status` |
+| Pause | `curl -s -X PUT http://localhost:8083/connectors/msk-to-confluent-cloud-replicator-encrypted/pause` |
+| Resume | `curl -s -X PUT http://localhost:8083/connectors/msk-to-confluent-cloud-replicator-encrypted/resume` |
+| Delete | `curl -s -X DELETE http://localhost:8083/connectors/msk-to-confluent-cloud-replicator-encrypted` |
+
 ---
 
 ## 8. IAM Authentication (AWS MSK)
