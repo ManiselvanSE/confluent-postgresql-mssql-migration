@@ -1,60 +1,94 @@
-# Azure VM Replicator - MSK → Confluent Cloud
+# =============================================================================
+# Docker Compose: Confluent Replicator (MSK → Confluent Cloud)
+# =============================================================================
 # Run from project root: docker-compose -f docker/docker-compose.yml up -d
 #
 # Prerequisites:
-# - Add plugin JARs to plugins/aws-msk-iam-auth/ and plugins/btds-encryption/
-# - Create .env from .env.example and fill placeholders
-# - AWS credentials in ~/.aws/credentials (or use IAM role on Azure VM)
+# - Create .env from .env.example (CCLOUD_*, MSK_BOOTSTRAP_SERVERS)
+# - AWS credentials in ~/.aws or set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION
+# =============================================================================
 
 services:
   replicator:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+    container_name: confluent-replicator
+    hostname: replicator
+    restart: unless-stopped
+    ports:
+      - "8083:8083"
+    volumes:
+      - ${AWS_CREDENTIALS_PATH:-$HOME/.aws}:/home/appuser/.aws:ro
     env_file:
       - .env
-    container_name: msk-replicator
-    hostname: replicator
-    ports:
-      - "8083:8083"   # Connect REST API
     environment:
-      # Kafka Connect distributed mode - uses Confluent Cloud as internal cluster
-      CONNECT_BOOTSTRAP_SERVERS: ${CCLOUD_BOOTSTRAP_SERVERS}
-      CONNECT_SECURITY_PROTOCOL: SASL_SSL
-      CONNECT_SASL_MECHANISM: PLAIN
-      CONNECT_SASL_JAAS_CONFIG: "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"${CCLOUD_API_KEY}\" password=\"${CCLOUD_API_SECRET}\";"
-      CONNECT_REST_ADVERTISED_HOST_NAME: replicator
-      CONNECT_GROUP_ID: replicator-connect-cluster
-      CONNECT_CONFIG_STORAGE_TOPIC: replicator-connect-config
-      CONNECT_OFFSET_STORAGE_TOPIC: replicator-connect-offsets
-      CONNECT_STATUS_STORAGE_TOPIC: replicator-connect-status
-      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 3
-      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 3
-      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 3
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
+      AWS_REGION: "${AWS_REGION:-ap-south-1}"
 
-      # Confluent Cloud auth (internal cluster + Schema Registry)
-      CONNECT_KEY_CONVERTER: io.confluent.connect.json.JsonSchemaConverter
-      CONNECT_VALUE_CONVERTER: io.confluent.connect.json.JsonSchemaConverter
-      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL}
-      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL}
-      CONNECT_KEY_CONVERTER_BASIC_AUTH_CREDENTIALS_SOURCE: USER_INFO
-      CONNECT_VALUE_CONVERTER_BASIC_AUTH_CREDENTIALS_SOURCE: USER_INFO
-      CONNECT_KEY_CONVERTER_BASIC_AUTH_USER_INFO: ${SR_API_KEY}:${SR_API_SECRET}
-      CONNECT_VALUE_CONVERTER_BASIC_AUTH_USER_INFO: ${SR_API_KEY}:${SR_API_SECRET}
+      CONNECT_BOOTSTRAP_SERVERS: "${CCLOUD_BOOTSTRAP_SERVERS}"
+      BOOTSTRAP_SERVERS: "${CCLOUD_BOOTSTRAP_SERVERS}"
+      CONNECT_GROUP_ID: "azure-replicator-connect-v2"
+      CONNECT_REST_PORT: "8083"
+      CONNECT_REST_ADVERTISED_HOST_NAME: "replicator"
 
-      # Plugin path
-      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components,/plugins
+      CONNECT_CONFIG_STORAGE_TOPIC: "connect-configs-v2"
+      CONNECT_OFFSET_STORAGE_TOPIC: "connect-offsets-v2"
+      CONNECT_STATUS_STORAGE_TOPIC: "connect-status-v2"
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: "3"
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: "3"
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: "3"
 
-      # AWS credentials for MSK IAM (used by Replicator connector config)
-      # Mount ~/.aws or set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION
-      AWS_REGION: ${AWS_REGION:-us-east-1}
-    volumes:
-      - ../plugins:/plugins:ro
-      - ~/.aws:/home/appuser/.aws:ro
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8083/connectors"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 90s
+      CONNECT_KEY_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "true"
+      CONNECT_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "true"
+      CONNECT_HEADER_CONVERTER: "org.apache.kafka.connect.converters.ByteArrayConverter"
+
+      CONNECT_SECURITY_PROTOCOL: "SASL_SSL"
+      CONNECT_SASL_MECHANISM: "PLAIN"
+      CONNECT_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="${CCLOUD_API_KEY}"
+        password="${CCLOUD_API_SECRET}";
+      CONNECT_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: "https"
+
+      CONNECT_PRODUCER_SECURITY_PROTOCOL: "SASL_SSL"
+      CONNECT_PRODUCER_SASL_MECHANISM: "PLAIN"
+      CONNECT_PRODUCER_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="${CCLOUD_API_KEY}"
+        password="${CCLOUD_API_SECRET}";
+      CONNECT_PRODUCER_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: "https"
+
+      CONNECT_CONSUMER_SECURITY_PROTOCOL: "SASL_SSL"
+      CONNECT_CONSUMER_SASL_MECHANISM: "PLAIN"
+      CONNECT_CONSUMER_SASL_JAAS_CONFIG: >-
+        org.apache.kafka.common.security.plain.PlainLoginModule required
+        username="${CCLOUD_API_KEY}"
+        password="${CCLOUD_API_SECRET}";
+      CONNECT_CONSUMER_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: "https"
+
+      CONNECT_PRODUCER_OVERRIDE_CONNECT_TIMEOUT_MS: "30000"
+      CONNECT_CONSUMER_OVERRIDE_CONNECT_TIMEOUT_MS: "30000"
+
+      CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/confluent-hub-components"
+
+      CONNECT_LOG4J_ROOT_LOGLEVEL: "INFO"
+      CONNECT_LOG4J_LOGGERS: "io.confluent.connect.replicator=INFO,software.amazon.msk.auth.iam=DEBUG"
+
+      KAFKA_HEAP_OPTS: "-Xms1g -Xmx2g"
+
+    deploy:
+      resources:
+        limits:
+          memory: 3g
+        reservations:
+          memory: 2g
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
