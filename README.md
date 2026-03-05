@@ -4,6 +4,17 @@ Migration setup using **Confluent managed connectors** to replicate data from **
 
 This project demonstrates end-to-end CDC (Change Data Capture) from PostgreSQL to MSSQL via Confluent Cloud, including flows through AWS MSK and the Replicator when applicable.
 
+## Docker (Azure VM Replicator)
+
+Run the Replicator in Docker:
+
+```bash
+# Add plugin JARs to plugins/, create .env from docker/.env.example
+docker-compose -f docker/docker-compose.yml up -d
+```
+
+See [docker/README.md](docker/README.md) for setup. Sensitive values use placeholders; never commit secrets.
+
 ## Documentation
 
 **[CDC Replication Architecture](docs/CDC_REPLICATION_ARCHITECTURE.md)** – Complete architecture guide including:
